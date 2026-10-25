@@ -1,0 +1,55 @@
+name: Rendu Blender
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        description: "Script Blender (dans blender/)"
+        default: "fuite_test.py"
+      plans:
+        description: "Plans et images, ex: 1:0-129,2:0-99"
+        default: "1:0-129,2:0-99"
+      tranches:
+        description: "Nombre de machines par plan"
+        default: "4"
+jobs:
+  preparer:
+    runs-on: ubuntu-latest
+    outputs:
+      matrice: ${{ steps.m.outputs.matrice }}
+    steps:
+      - id: m
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          plans = "${{ inputs.plans }}"; n = int("${{ inputs.tranches }}")
+          inc = []
+          for p in plans.split(','):
+              shot, rng = p.split(':'); a, b = map(int, rng.split('-'))
+              step = -(-(b - a + 1) // n)
+              for s in range(a, b + 1, step):
+                  inc.append({"plan": shot, "debut": s, "fin": min(b, s + step - 1)})
+          print("matrice=" + json.dumps({"include": inc}))
+          PY
+  rendu:
+    needs: preparer
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.preparer.outputs.matrice) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - name: Installer Blender (bpy) et ffmpeg
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg libxrender1 libxxf86vm1 libxfixes3 libxi6 libxkbcommon0 libsm6 libgl1 libegl1
+          pip install -q bpy==5.2.2
+      - name: Rendre la tranche
+        run: |
+          python blender/${{ inputs.script }} ${{ matrix.plan }} out ${{ matrix.debut }} ${{ matrix.fin }}
+          ffmpeg -y -loglevel error -framerate 25 -start_number ${{ matrix.debut }} -i out/f_%04d.png -c:v libx264 -crf 12 -pix_fmt yuv420p "plan${{ matrix.plan }}_$(printf %04d ${{ matrix.debut }}).mp4"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plan${{ matrix.plan }}-${{ matrix.debut }}
+          path: plan*.mp4
+          retention-days: 3

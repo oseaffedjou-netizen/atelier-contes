@@ -46,7 +46,7 @@ jobs:
           pip install -q bpy==5.2.2
       - name: Rendre la tranche
         run: |
-          python blender/${{ inputs.script }} ${{ matrix.plan }} out ${{ matrix.debut }} ${{ matrix.fin }}
+          python atelier-contes/blender/${{ inputs.script }} ${{ matrix.plan }} out ${{ matrix.debut }} ${{ matrix.fin }}
           ffmpeg -y -loglevel error -framerate 25 -start_number ${{ matrix.debut }} -i out/f_%04d.png -c:v libx264 -crf 12 -pix_fmt yuv420p "plan${{ matrix.plan }}_$(printf %04d ${{ matrix.debut }}).mp4"
       - uses: actions/upload-artifact@v4
         with:
